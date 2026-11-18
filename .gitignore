@@ -1,0 +1,14 @@
+/target
+*.log
+*.png
+!docs/*.png
+nvmax.exe
+HANDOFF-*.md
+npi/npi.zip
+npi/*.nip
+npi/*.txt
+npi/*.xml
+npi/*.pdb
+npi$*
+tools/*.png
+tools/Downloads*
