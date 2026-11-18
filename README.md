@@ -30,7 +30,7 @@
 | CUDA | Sysmem fallback = *Prefer no sysmem fallback*, Force P2 state = Off |
 | Windows | GPU scheduling, Game Mode and the power plan checked/forced |
 
-56 driver and Windows checks in total (incl. overlays/indicators off, Ansel off, shader cache everywhere, single-display performance mode); see `src/main.rs` (`MAX_PERF`) for the exact list of setting IDs.
+59 driver and Windows checks in total (incl. overlays/indicators off, Ansel off, shader cache everywhere, single-display performance mode); see `src/main.rs` (`MAX_PERF`) for the exact list of setting IDs.
 
 ## 🚀 Install
 
@@ -49,7 +49,7 @@ Example output ends with:
 ```
 [OK] CUDA Sysmem Fallback Policy = Prefer no sysmem fallback: 1
 [OK] Low Latency Mode (panel state) = Ultra: 2
----- 56 checks, 0 failed ----
+---- 59 checks, 0 failed ----
 ```
 
 ## 🧠 How it works
