@@ -30,7 +30,7 @@
 | CUDA | Sysmem fallback = *Prefer no sysmem fallback*, Force P2 state = Off |
 | Windows | GPU scheduling, Game Mode and the power plan checked/forced |
 
-43+ driver and Windows checks in total; see `src/main.rs` (`MAX_PERF`) for the exact list of setting IDs.
+56 driver and Windows checks in total (incl. overlays/indicators off, Ansel off, shader cache everywhere, single-display performance mode); see `src/main.rs` (`MAX_PERF`) for the exact list of setting IDs.
 
 ## 🚀 Install
 
@@ -49,11 +49,12 @@ Example output ends with:
 ```
 [OK] CUDA Sysmem Fallback Policy = Prefer no sysmem fallback: 1
 [OK] Low Latency Mode (panel state) = Ultra: 2
----- 45 checks, 0 failed ----
+---- 56 checks, 0 failed ----
 ```
 
 ## 🧠 How it works
 
+0. **Install ladder** – the Control Panel is checked for "registered + status Ok + nvcplui.exe on disk"; if not, `nvmax` runs winget (msstore, `--force`), then escalates through repairing winget, removing a broken copy, re-registering the manifest and resetting the app, retrying up to 5 times.
 1. **NVAPI DRS** (loaded dynamically from `nvapi64.dll`, no SDK needed) writes the documented profile settings.
 2. A few settings (Low Latency Ultra, CUDA sysmem fallback, Force P2) are stored in the base profile but are *not* writable through a plain `DRS_SetSetting` call (it returns `-160`). For those, `nvmax` embeds [NVIDIA Profile Inspector](https://github.com/Orbmu2k/nvidiaProfileInspector) (MIT), extracts it to a temp folder, imports a generated `.nip`, deletes it, then reads the values back through `DRS_EnumSettings`.
 3. Every value is verified; failed attempts are retried.

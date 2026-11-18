@@ -23,7 +23,14 @@ unsafe extern "system" {
 // DRS_SetSetting returns -160 for them; NVIDIA Profile Inspector (MIT) writes them. No panel, no clicks.
 const NPI_EXE: &[u8] = include_bytes!("../npi/nvidiaProfileInspector.exe");
 const NPI_CFG: &[u8] = include_bytes!("../npi/nvidiaProfileInspector.exe.config");
-const NPI_SETTINGS: [(u32, u32, &str); 4] = [
+const NPI_SETTINGS: [(u32, u32, &str); 11] = [
+    (0x1075D972, 0, "Ansel = Off"),
+    (0x208F3F2E, 1, "Shader cache enabled (OpenGL) = On"),
+    (0x200AEBFC, 0, "Multi-display/mixed-GPU acceleration = Single display performance mode"),
+    (0x20403F79, 0, "Texture filtering LOD bias (OpenGL) = 0"),
+    (0x002CF156, 0, "Flip indicator overlay = Off"),
+    (0x008DF510, 0, "G-SYNC support indicator overlay = Off"),
+    (0x10029538, 0, "G-SYNC indicator overlay = Off"),
     (0x10ECECC9, 1, "CUDA Sysmem Fallback Policy = Prefer no sysmem fallback"),
     (0x0005F543, 2, "Low Latency Mode (panel state) = Ultra"),
     (0x10835000, 1, "Ultra Low Latency enabled"),
@@ -243,6 +250,10 @@ const MAX_PERF: &[(u32, u32, &str)] = &[
     (0x1094F1F7, 0, "Monitor Technology: VRR requested state = Off (fixed refresh)"),
     (0x1094F157, 0, "Monitor Technology: VRR global feature = Off"),
     (0x1194F158, 0, "Monitor Technology: G-SYNC globally = Off"),
+    (0x0084CD70, 1, "Texture filtering anisotropic filter optimization = On"),
+    (0x1068FB9C, 0, "FXAA indicator overlay = Off"),
+    (0x1095F16F, 0, "VRR overlay indicator = Off"),
+    (0x1095F170, 0, "Autoalign flash indicator = Off"),
 ];
 
 // ---------- helpers ----------
@@ -278,23 +289,51 @@ fn winget_path() -> String {
 }
 
 // ---------- steps ----------
+/// "Installed correctly" = package registered, status Ok, and nvcplui.exe present on disk.
+fn nvcp_healthy() -> bool {
+    let (_, out) = ps("$p = Get-AppxPackage -AllUsers NVIDIACorp.NVIDIAControlPanel | Sort-Object Version -Descending | Select-Object -First 1; if ($p -and $p.Status -eq 'Ok' -and -not $p.IsFramework -and (Test-Path (Join-Path $p.InstallLocation 'nvcplui.exe'))) { 'HEALTHY' } else { 'BROKEN' }");
+    out.contains("HEALTHY")
+}
+
+/// Install ladder: winget install/upgrade -> repair winget -> remove broken package and reinstall
+/// -> register by family name -> direct msstore install. Stops at the first healthy result.
 fn step_nvcp() -> (bool, String) {
+    let ladder_ps: [&str; 4] = [
+        // repair/refresh winget itself
+        "Add-AppxPackage -RegisterByFamilyName -MainPackage Microsoft.DesktopAppInstaller_8wekyb3d8bbwe -ErrorAction SilentlyContinue",
+        // drop a registered-but-broken copy
+        "Get-AppxPackage -AllUsers NVIDIACorp.NVIDIAControlPanel | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue",
+        // re-register an existing install
+        "Get-AppxPackage -AllUsers NVIDIACorp.NVIDIAControlPanel | ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register (Join-Path $_.InstallLocation 'AppxManifest.xml') -ErrorAction SilentlyContinue }",
+        // reset the app
+        "Get-AppxPackage NVIDIACorp.NVIDIAControlPanel | Reset-AppxPackage -ErrorAction SilentlyContinue",
+    ];
     let w = winget_path();
-    for i in 1..=ATTEMPTS {
-        let before = nvcp_version();
-        let args: Vec<&str> = if before.is_some() {
+    let mut last = String::new();
+    for i in 1..=ATTEMPTS + 2 {
+        let healthy = nvcp_healthy();
+        let args: Vec<&str> = if nvcp_version().is_some() && healthy {
             vec!["upgrade", "--id", NVCP_STORE_ID, "--source", "msstore", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"]
         } else {
             vec!["install", "--id", NVCP_STORE_ID, "--source", "msstore", "--force", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"]
         };
         let (_, out) = run(&w, &args);
-        if let Some(v) = nvcp_version() {
-            return (true, format!("NVIDIA Control Panel {v}"));
+        last = out.lines().last().unwrap_or("").to_string();
+        if nvcp_healthy() {
+            let v = nvcp_version().unwrap_or_default();
+            return (true, format!("NVIDIA Control Panel {v} installed and healthy"));
         }
-        eprintln!("nvcp attempt {i} failed: {}", out.lines().last().unwrap_or(""));
+        eprintln!("nvcp attempt {i} not healthy: {last}");
+        // escalate: run one repair rung per failed attempt, then retry winget
+        let rung = ladder_ps[((i - 1) as usize) % ladder_ps.len()];
+        let _ = ps(rung);
+        if nvcp_healthy() {
+            let v = nvcp_version().unwrap_or_default();
+            return (true, format!("NVIDIA Control Panel {v} repaired and healthy"));
+        }
         sleep(Duration::from_secs(3));
     }
-    (false, "NVIDIA Control Panel not installed".into())
+    (false, format!("NVIDIA Control Panel could not be installed correctly: {last}"))
 }
 
 fn step_nv() -> Vec<(bool, String)> {
